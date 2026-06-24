@@ -3,6 +3,34 @@ import JSZip from "jszip";
 import type { AspectRatioPreset, OutputRegion } from "./types";
 import { ASPECT_RATIO_PRESETS } from "./types";
 
+const DEFAULT_BASENAME = "panel-slice";
+const MAX_BASENAME_LENGTH = 80;
+
+/** Strip extension and sanitize a user- or upload-derived export basename. */
+export function sanitizeExportBasename(filename: string): string {
+  const stem = filename.replace(/\.[^.]+$/, "");
+  const sanitized = stem
+    .trim()
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_BASENAME_LENGTH);
+  return sanitized || DEFAULT_BASENAME;
+}
+
+function buildPanelFilename(
+  basename: string,
+  index: number,
+  total: number,
+): string {
+  const pad = Math.max(2, String(total).length);
+  return `${basename}_${String(index + 1).padStart(pad, "0")}.png`;
+}
+
+function buildZipFilename(basename: string): string {
+  return `${basename}_slices.zip`;
+}
+
 function getAspectRatioValue(preset: AspectRatioPreset | null): number | null {
   if (!preset) return null;
   return ASPECT_RATIO_PRESETS.find((item) => item.id === preset)?.ratio ?? null;
@@ -104,16 +132,17 @@ export async function exportRegionsIndividually(
   imageUrl: string,
   regions: OutputRegion[],
   aspectPreset: AspectRatioPreset | null,
+  basename: string,
 ) {
   const image = await loadImage(imageUrl);
   const aspectRatio = getAspectRatioValue(aspectPreset);
-  const pad = String(regions.length).length;
+  const safeBasename = sanitizeExportBasename(basename);
 
   for (let index = 0; index < regions.length; index += 1) {
     const region = regions[index];
     const canvas = cropRegionToCanvas(image, region, aspectRatio);
     const blob = await canvasToBlob(canvas);
-    const filename = `panel-slice-${String(index + 1).padStart(pad, "0")}.png`;
+    const filename = buildPanelFilename(safeBasename, index, regions.length);
     downloadBlob(blob, filename);
     await new Promise((resolve) => setTimeout(resolve, 120));
   }
@@ -123,22 +152,23 @@ export async function exportRegionsAsZip(
   imageUrl: string,
   regions: OutputRegion[],
   aspectPreset: AspectRatioPreset | null,
+  basename: string,
 ): Promise<void> {
   const image = await loadImage(imageUrl);
   const aspectRatio = getAspectRatioValue(aspectPreset);
   const zip = new JSZip();
-  const pad = String(regions.length).length;
+  const safeBasename = sanitizeExportBasename(basename);
 
   for (let index = 0; index < regions.length; index += 1) {
     const region = regions[index];
     const canvas = cropRegionToCanvas(image, region, aspectRatio);
     const blob = await canvasToBlob(canvas);
-    const filename = `panel-slice-${String(index + 1).padStart(pad, "0")}.png`;
+    const filename = buildPanelFilename(safeBasename, index, regions.length);
     zip.file(filename, blob);
   }
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
-  downloadBlob(zipBlob, "panel-slice-ultra.zip");
+  downloadBlob(zipBlob, buildZipFilename(safeBasename));
 }
 
 export async function renderRegionPreview(

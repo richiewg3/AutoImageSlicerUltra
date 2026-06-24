@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   exportRegionsAsZip,
   exportRegionsIndividually,
+  sanitizeExportBasename,
 } from "@/lib/export";
 import type { AspectRatioPreset, OutputRegion } from "@/lib/types";
 import { ASPECT_RATIO_PRESETS } from "@/lib/types";
 
 type ExportScreenProps = {
   imageUrl: string;
+  sourceImageName: string;
   outputs: OutputRegion[];
   aspectPreset: AspectRatioPreset | null;
   onAspectChange: (preset: AspectRatioPreset | null) => void;
@@ -19,13 +21,25 @@ type ExportScreenProps = {
 
 export function ExportScreen({
   imageUrl,
+  sourceImageName,
   outputs,
   aspectPreset,
   onAspectChange,
   onBack,
 }: ExportScreenProps) {
+  const defaultBasename = useMemo(
+    () => sanitizeExportBasename(sourceImageName),
+    [sourceImageName],
+  );
+  const [basename, setBasename] = useState(defaultBasename);
   const [busy, setBusy] = useState<"zip" | "files" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const safeBasename = sanitizeExportBasename(basename);
+  const exampleFilename =
+    outputs.length > 0
+      ? `${safeBasename}_${String(1).padStart(Math.max(2, String(outputs.length).length), "0")}.png`
+      : `${safeBasename}_01.png`;
 
   const runExport = async (mode: "zip" | "files") => {
     if (outputs.length === 0) return;
@@ -33,10 +47,10 @@ export function ExportScreen({
     setMessage(null);
     try {
       if (mode === "zip") {
-        await exportRegionsAsZip(imageUrl, outputs, aspectPreset);
+        await exportRegionsAsZip(imageUrl, outputs, aspectPreset, basename);
         setMessage("ZIP download started.");
       } else {
-        await exportRegionsIndividually(imageUrl, outputs, aspectPreset);
+        await exportRegionsIndividually(imageUrl, outputs, aspectPreset, basename);
         setMessage("Individual downloads started.");
       }
     } catch (error) {
@@ -63,6 +77,25 @@ export function ExportScreen({
           Aspect-ratio presets only affect the exported files. Your slice layout
           in the editor stays the same.
         </p>
+
+        <div className="export-field">
+          <label htmlFor="export-basename">File name prefix</label>
+          <input
+            id="export-basename"
+            type="text"
+            className="export-input"
+            value={basename}
+            onChange={(event) => setBasename(event.target.value)}
+            placeholder={defaultBasename}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <p className="export-hint">
+            Files save as <code>{exampleFilename}</code>
+            {outputs.length > 1 ? `, …` : ""} or{" "}
+            <code>{safeBasename}_slices.zip</code> for ZIP.
+          </p>
+        </div>
 
         <div className="aspect-grid">
           <button
