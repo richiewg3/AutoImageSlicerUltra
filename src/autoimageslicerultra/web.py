@@ -1,6 +1,6 @@
 """A small Flask web UI for AutoImageSlicerUltra.
 
-Upload a paneled image and get back the individual panels, rendered inline.
+Upload one or more paneled images and get back the individual panels, rendered inline.
 Run with::
 
     autoslice-web            # via the console script, if installed
@@ -10,6 +10,7 @@ Run with::
 from __future__ import annotations
 
 import base64
+import html
 import io
 
 from flask import Flask, request
@@ -39,10 +40,14 @@ _PAGE = """<!doctype html>
              font-size: 15px; cursor: pointer; }}
     button:hover {{ background: #1d4ed8; }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-             gap: 16px; margin-top: 24px; }}
+             gap: 16px; margin-top: 12px; }}
     .card {{ background: #181b22; border-radius: 10px; padding: 10px; text-align: center; }}
     .card img {{ max-width: 100%; border-radius: 6px; }}
     .count {{ margin-top: 20px; font-size: 18px; }}
+    .image-section {{ margin-top: 28px; }}
+    .image-section h2 {{ margin: 0 0 4px; font-size: 18px; font-weight: 600; }}
+    .image-section .image-count {{ margin: 0 0 8px; opacity: .75; font-size: 14px; }}
+    .error {{ color: #f87171; margin-top: 8px; }}
   </style>
 </head>
 <body>
@@ -52,8 +57,8 @@ _PAGE = """<!doctype html>
   </header>
   <main>
     <form method="post" action="/slice" enctype="multipart/form-data">
-      <input type="file" name="image" accept="image/*" required />
-      <button type="submit">Slice image</button>
+      <input type="file" name="image" accept="image/*" multiple required />
+      <button type="submit">Slice images</button>
     </form>
     {body}
   </main>
@@ -68,6 +73,35 @@ def _img_tag(image: Image.Image) -> str:
     return f'<img src="data:image/png;base64,{data}" alt="panel" />'
 
 
+def _render_panels(panels: list) -> str:
+    cards = "".join(
+        f'<div class="card">{_img_tag(p.image)}'
+        f"<div>panel {p.index + 1} &middot; {p.width}&times;{p.height}</div></div>"
+        for p in panels
+    )
+    return f'<div class="grid">{cards}</div>'
+
+
+def _render_image_section(filename: str, panels: list, error: str | None = None) -> str:
+    safe_name = html.escape(filename)
+    if error is not None:
+        return (
+            f'<section class="image-section">'
+            f"<h2>{safe_name}</h2>"
+            f'<p class="error">Could not slice: {html.escape(error)}</p>'
+            f"</section>"
+        )
+    count = len(panels)
+    label = "panel" if count == 1 else "panels"
+    return (
+        f'<section class="image-section">'
+        f"<h2>{safe_name}</h2>"
+        f'<p class="image-count">Found {count} {label}.</p>'
+        f"{_render_panels(panels)}"
+        f"</section>"
+    )
+
+
 @app.get("/")
 def index() -> str:
     return _PAGE.format(body="")
@@ -75,19 +109,30 @@ def index() -> str:
 
 @app.post("/slice")
 def do_slice() -> str:
-    file = request.files.get("image")
-    if file is None or file.filename == "":
-        return _PAGE.format(body='<p class="count">No image uploaded.</p>')
+    files = [f for f in request.files.getlist("image") if f.filename]
+    if not files:
+        return _PAGE.format(body='<p class="count">No images uploaded.</p>')
 
-    with Image.open(file.stream) as img:
-        panels = slice_image(img)
+    sections: list[str] = []
+    total_panels = 0
+    for file in files:
+        try:
+            with Image.open(file.stream) as img:
+                panels = slice_image(img)
+        except Exception as exc:  # noqa: BLE001 — show per-file errors in the UI
+            sections.append(_render_image_section(file.filename, [], str(exc)))
+            continue
 
-    cards = "".join(
-        f'<div class="card">{_img_tag(p.image)}'
-        f"<div>panel {p.index + 1} &middot; {p.width}&times;{p.height}</div></div>"
-        for p in panels
+        total_panels += len(panels)
+        sections.append(_render_image_section(file.filename, panels))
+
+    image_word = "image" if len(files) == 1 else "images"
+    panel_word = "panel" if total_panels == 1 else "panels"
+    summary = (
+        f'<p class="count">Processed {len(files)} {image_word} '
+        f"({total_panels} {panel_word} total).</p>"
     )
-    body = f'<p class="count">Found {len(panels)} panel(s).</p><div class="grid">{cards}</div>'
+    body = summary + "".join(sections)
     return _PAGE.format(body=body)
 
 
