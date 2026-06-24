@@ -70,3 +70,53 @@ export function createEmptyEditorState(): EditorState {
     selectedId: null,
   };
 }
+
+export type TextSize = "small" | "medium" | "large";
+
+export type TextPlacement = "bottom" | "top";
+
+export type TextColor = "white" | "black" | "yellow" | "red";
+
+export type TextOverlay = {
+  text: string;
+  size: TextSize;
+  color: TextColor;
+  placement: TextPlacement;
+};
+
+export const TEXT_SIZE_OPTIONS: { id: TextSize; label: string }[] = [
+  { id: "small", label: "Small" },
+  { id: "medium", label: "Medium" },
+  { id: "large", label: "Large" },
+];
+
+export const TEXT_COLOR_OPTIONS: { id: TextColor; label: string; hex: string }[] =
+  [
+    { id: "white", label: "White", hex: "#ffffff" },
+    { id: "black", label: "Black", hex: "#111111" },
+    { id: "yellow", label: "Yellow", hex: "#ffd54f" },
+    { id: "red", label: "Red", hex: "#ff5252" },
+  ];
+
+export const TEXT_PLACEMENT_OPTIONS: { id: TextPlacement; label: string }[] = [
+  { id: "bottom", label: "Bottom" },
+  { id: "top", label: "Top" },
+];
+
+/** Per-output-region caption settings keyed by region id. */
+export type TextOverlayMap = Record<string, TextOverlay | undefined>;
+
+export function createEmptyTextOverlay(): TextOverlay {
+  return {
+    text: "",
+    size: "medium",
+    color: "white",
+    placement: "bottom",
+  };
+}
+
+export function hasActiveTextOverlays(overlays: TextOverlayMap): boolean {
+  return Object.values(overlays).some(
+    (overlay) => overlay !== undefined && overlay.text.trim().length > 0,
+  );
+}

@@ -522,6 +522,97 @@ button:disabled {
   color: white;
 }
 
+.preview-card-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.caption-toggle {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.caption-toggle.is-active {
+  border-color: rgba(91, 140, 255, 0.45);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.caption-editor {
+  padding: 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 14px;
+}
+
+.caption-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.caption-editor-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.caption-editor-header .ghost-button {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.88rem;
+}
+
+.caption-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+
+.caption-options {
+  display: grid;
+  gap: 12px;
+}
+
+.caption-option-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.caption-option-group legend {
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.caption-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.color-chip {
+  width: var(--touch);
+  min-height: var(--touch);
+  padding: 0;
+  border-radius: 14px;
+  border: 2px solid var(--line);
+  background: var(--chip-color);
+}
+
+.color-chip.is-active {
+  border-color: white;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 @media (min-width: 720px) {
   .upload-features {
     grid-template-columns: repeat(3, minmax(0, 1fr));
