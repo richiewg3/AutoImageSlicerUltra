@@ -15,6 +15,8 @@ import type {
   EditorState,
   OutputRegion,
   SliceLine,
+  TextOverlay,
+  TextOverlayMap,
   Tool,
 } from "@/lib/types";
 import { createEmptyEditorState } from "@/lib/types";
@@ -41,6 +43,7 @@ export function PanelSliceApp() {
   const [aspectPreset, setAspectPreset] = useState<AspectRatioPreset | null>(
     null,
   );
+  const [textOverlays, setTextOverlays] = useState<TextOverlayMap>({});
   const [error, setError] = useState<string | null>(null);
   const imageUrlRef = useRef<string | null>(null);
 
@@ -86,6 +89,7 @@ export function PanelSliceApp() {
       setHistory([]);
       setOutputs([]);
       setSelectedOutputIds(new Set());
+      setTextOverlays({});
       setActiveTool("horizontal");
       setMode("editing");
     };
@@ -229,9 +233,25 @@ export function PanelSliceApp() {
     setOutputs([]);
     setSelectedOutputIds(new Set());
     setAspectPreset(null);
+    setTextOverlays({});
     setMode("upload");
     setError(null);
   }, []);
+
+  const handleTextOverlayChange = useCallback(
+    (regionId: string, overlay: TextOverlay | undefined) => {
+      setTextOverlays((current) => {
+        const next = { ...current };
+        if (!overlay || !overlay.text.trim()) {
+          delete next[regionId];
+        } else {
+          next[regionId] = overlay;
+        }
+        return next;
+      });
+    },
+    [],
+  );
 
   const selectedOutputs = useMemo(
     () => outputs.filter((region) => selectedOutputIds.has(region.id)),
@@ -337,6 +357,8 @@ export function PanelSliceApp() {
             outputs={outputs}
             selectedIds={selectedOutputIds}
             aspectPreset={aspectPreset}
+            textOverlays={textOverlays}
+            onTextOverlayChange={handleTextOverlayChange}
             onToggle={(id) => {
               setSelectedOutputIds((current) => {
                 const next = new Set(current);
@@ -356,11 +378,12 @@ export function PanelSliceApp() {
 
         {mode === "export" && image && (
           <ExportScreen
-            key={image.name}
+            key="export"
             imageUrl={image.url}
             sourceImageName={image.name}
             outputs={selectedOutputs}
             aspectPreset={aspectPreset}
+            textOverlays={textOverlays}
             onAspectChange={setAspectPreset}
             onBack={() => setMode("preview")}
           />

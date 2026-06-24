@@ -6,15 +6,17 @@ import {
   exportRegionsAsZip,
   exportRegionsIndividually,
   sanitizeExportBasename,
+  type ExportVariant,
 } from "@/lib/export";
-import type { AspectRatioPreset, OutputRegion } from "@/lib/types";
-import { ASPECT_RATIO_PRESETS } from "@/lib/types";
+import type { AspectRatioPreset, OutputRegion, TextOverlayMap } from "@/lib/types";
+import { ASPECT_RATIO_PRESETS, hasActiveTextOverlays } from "@/lib/types";
 
 type ExportScreenProps = {
   imageUrl: string;
   sourceImageName: string;
   outputs: OutputRegion[];
   aspectPreset: AspectRatioPreset | null;
+  textOverlays: TextOverlayMap;
   onAspectChange: (preset: AspectRatioPreset | null) => void;
   onBack: () => void;
 };
@@ -24,6 +26,7 @@ export function ExportScreen({
   sourceImageName,
   outputs,
   aspectPreset,
+  textOverlays,
   onAspectChange,
   onBack,
 }: ExportScreenProps) {
@@ -34,6 +37,8 @@ export function ExportScreen({
   const [basename, setBasename] = useState(defaultBasename);
   const [busy, setBusy] = useState<"zip" | "files" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const captionsEnabled = hasActiveTextOverlays(textOverlays);
+  const [exportVariant, setExportVariant] = useState<ExportVariant>("original");
 
   const safeBasename = sanitizeExportBasename(basename);
   const exampleFilename =
@@ -45,12 +50,27 @@ export function ExportScreen({
     if (outputs.length === 0) return;
     setBusy(mode);
     setMessage(null);
+    const variant = captionsEnabled ? exportVariant : "original";
     try {
       if (mode === "zip") {
-        await exportRegionsAsZip(imageUrl, outputs, aspectPreset, basename);
+        await exportRegionsAsZip(
+          imageUrl,
+          outputs,
+          aspectPreset,
+          basename,
+          textOverlays,
+          variant,
+        );
         setMessage("ZIP download started.");
       } else {
-        await exportRegionsIndividually(imageUrl, outputs, aspectPreset, basename);
+        await exportRegionsIndividually(
+          imageUrl,
+          outputs,
+          aspectPreset,
+          basename,
+          textOverlays,
+          variant,
+        );
         setMessage("Individual downloads started.");
       }
     } catch (error) {
@@ -116,6 +136,39 @@ export function ExportScreen({
             </button>
           ))}
         </div>
+
+        {captionsEnabled && (
+          <div className="export-field">
+            <label>Download versions</label>
+            <div className="caption-chip-row">
+              <button
+                type="button"
+                className={`aspect-chip ${exportVariant === "original" ? "is-active" : ""}`}
+                onClick={() => setExportVariant("original")}
+              >
+                Originals only
+              </button>
+              <button
+                type="button"
+                className={`aspect-chip ${exportVariant === "caption" ? "is-active" : ""}`}
+                onClick={() => setExportVariant("caption")}
+              >
+                With captions
+              </button>
+              <button
+                type="button"
+                className={`aspect-chip ${exportVariant === "both" ? "is-active" : ""}`}
+                onClick={() => setExportVariant("both")}
+              >
+                Both
+              </button>
+            </div>
+            <p className="export-hint">
+              Caption files use a <code>_caption</code> suffix, e.g.{" "}
+              <code>{safeBasename}_01_caption.png</code>
+            </p>
+          </div>
+        )}
 
         <div className="export-actions">
           <button

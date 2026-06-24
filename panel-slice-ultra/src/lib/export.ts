@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 
-import type { AspectRatioPreset, OutputRegion } from "./types";
+import { applyTextOverlay } from "./text-overlay";
+import type { AspectRatioPreset, OutputRegion, TextOverlayMap } from "./types";
 import { ASPECT_RATIO_PRESETS } from "./types";
 
 const DEFAULT_BASENAME = "panel-slice";
@@ -22,9 +23,11 @@ function buildPanelFilename(
   basename: string,
   index: number,
   total: number,
+  variant: "original" | "caption" = "original",
 ): string {
   const pad = Math.max(2, String(total).length);
-  return `${basename}_${String(index + 1).padStart(pad, "0")}.png`;
+  const suffix = variant === "caption" ? "_caption" : "";
+  return `${basename}_${String(index + 1).padStart(pad, "0")}${suffix}.png`;
 }
 
 function buildZipFilename(basename: string): string {
@@ -49,6 +52,7 @@ function cropRegionToCanvas(
   image: HTMLImageElement,
   region: OutputRegion,
   aspectRatio: number | null,
+  textOverlays?: TextOverlayMap,
 ): HTMLCanvasElement {
   const sourceX = Math.round(region.x * image.naturalWidth);
   const sourceY = Math.round(region.y * image.naturalHeight);
@@ -63,6 +67,10 @@ function cropRegionToCanvas(
     canvas.width = sourceW;
     canvas.height = sourceH;
     context.drawImage(image, sourceX, sourceY, sourceW, sourceH, 0, 0, sourceW, sourceH);
+    const overlay = textOverlays?.[region.id];
+    if (overlay?.text.trim()) {
+      return applyTextOverlay(canvas, overlay);
+    }
     return canvas;
   }
 
@@ -100,6 +108,11 @@ function cropRegionToCanvas(
     drawH,
   );
 
+  const overlay = textOverlays?.[region.id];
+  if (overlay?.text.trim()) {
+    return applyTextOverlay(canvas, overlay);
+  }
+
   return canvas;
 }
 
@@ -128,11 +141,15 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+export type ExportVariant = "original" | "caption" | "both";
+
 export async function exportRegionsIndividually(
   imageUrl: string,
   regions: OutputRegion[],
   aspectPreset: AspectRatioPreset | null,
   basename: string,
+  textOverlays?: TextOverlayMap,
+  variant: ExportVariant = "original",
 ) {
   const image = await loadImage(imageUrl);
   const aspectRatio = getAspectRatioValue(aspectPreset);
@@ -140,11 +157,34 @@ export async function exportRegionsIndividually(
 
   for (let index = 0; index < regions.length; index += 1) {
     const region = regions[index];
-    const canvas = cropRegionToCanvas(image, region, aspectRatio);
-    const blob = await canvasToBlob(canvas);
-    const filename = buildPanelFilename(safeBasename, index, regions.length);
-    downloadBlob(blob, filename);
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    const overlay = textOverlays?.[region.id];
+    const hasCaption = Boolean(overlay?.text.trim());
+
+    if (variant === "original" || variant === "both") {
+      const canvas = cropRegionToCanvas(image, region, aspectRatio);
+      const blob = await canvasToBlob(canvas);
+      const filename = buildPanelFilename(
+        safeBasename,
+        index,
+        regions.length,
+        "original",
+      );
+      downloadBlob(blob, filename);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+
+    if ((variant === "caption" || variant === "both") && hasCaption) {
+      const canvas = cropRegionToCanvas(image, region, aspectRatio, textOverlays);
+      const blob = await canvasToBlob(canvas);
+      const filename = buildPanelFilename(
+        safeBasename,
+        index,
+        regions.length,
+        "caption",
+      );
+      downloadBlob(blob, filename);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
   }
 }
 
@@ -153,6 +193,8 @@ export async function exportRegionsAsZip(
   regions: OutputRegion[],
   aspectPreset: AspectRatioPreset | null,
   basename: string,
+  textOverlays?: TextOverlayMap,
+  variant: ExportVariant = "original",
 ): Promise<void> {
   const image = await loadImage(imageUrl);
   const aspectRatio = getAspectRatioValue(aspectPreset);
@@ -161,10 +203,32 @@ export async function exportRegionsAsZip(
 
   for (let index = 0; index < regions.length; index += 1) {
     const region = regions[index];
-    const canvas = cropRegionToCanvas(image, region, aspectRatio);
-    const blob = await canvasToBlob(canvas);
-    const filename = buildPanelFilename(safeBasename, index, regions.length);
-    zip.file(filename, blob);
+    const overlay = textOverlays?.[region.id];
+    const hasCaption = Boolean(overlay?.text.trim());
+
+    if (variant === "original" || variant === "both") {
+      const canvas = cropRegionToCanvas(image, region, aspectRatio);
+      const blob = await canvasToBlob(canvas);
+      const filename = buildPanelFilename(
+        safeBasename,
+        index,
+        regions.length,
+        "original",
+      );
+      zip.file(filename, blob);
+    }
+
+    if ((variant === "caption" || variant === "both") && hasCaption) {
+      const canvas = cropRegionToCanvas(image, region, aspectRatio, textOverlays);
+      const blob = await canvasToBlob(canvas);
+      const filename = buildPanelFilename(
+        safeBasename,
+        index,
+        regions.length,
+        "caption",
+      );
+      zip.file(filename, blob);
+    }
   }
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
@@ -176,10 +240,11 @@ export async function renderRegionPreview(
   region: OutputRegion,
   aspectPreset: AspectRatioPreset | null,
   maxSize = 320,
+  textOverlays?: TextOverlayMap,
 ): Promise<string> {
   const image = await loadImage(imageUrl);
   const aspectRatio = getAspectRatioValue(aspectPreset);
-  const canvas = cropRegionToCanvas(image, region, aspectRatio);
+  const canvas = cropRegionToCanvas(image, region, aspectRatio, textOverlays);
   const scale = Math.min(1, maxSize / Math.max(canvas.width, canvas.height));
   if (scale < 1) {
     const scaled = document.createElement("canvas");
