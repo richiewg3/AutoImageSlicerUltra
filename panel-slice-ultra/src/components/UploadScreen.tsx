@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 type UploadScreenProps = {
-  onUpload: (file: File) => void;
+  onUpload: (files: File[]) => void;
   error: string | null;
 };
 
@@ -11,8 +11,8 @@ export function UploadScreen({ onUpload, error }: UploadScreenProps) {
   const [dragging, setDragging] = useState(false);
 
   const handleFiles = (files: FileList | null) => {
-    const file = files?.[0];
-    if (file) onUpload(file);
+    if (!files || files.length === 0) return;
+    onUpload(Array.from(files));
   };
 
   return (
@@ -52,25 +52,25 @@ export function UploadScreen({ onUpload, error }: UploadScreenProps) {
           </svg>
         </div>
 
-        <h2>Upload one image to start slicing</h2>
+        <h2>Upload one or more images to start slicing</h2>
         <p>
           Add horizontal and vertical slice lines or draw custom crop boxes.
           Preview the pieces, pick what to keep, then export individually or as
-          a ZIP.
+          a ZIP. Each image keeps its own slice layout.
         </p>
 
         <label className="upload-button">
           <input
             type="file"
             accept="image/*"
+            multiple
             className="sr-only"
             onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) onUpload(file);
+              handleFiles(event.target.files);
               event.currentTarget.value = "";
             }}
           />
-          Choose image
+          Choose images
         </label>
 
         {!error && (

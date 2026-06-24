@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ExportScreen } from "@/components/ExportScreen";
+import { ImageSwitcher } from "@/components/ImageSwitcher";
 import { PreviewScreen } from "@/components/PreviewScreen";
 import { UploadScreen } from "@/components/UploadScreen";
 import { EditingScreen } from "@/components/EditingScreen";
@@ -30,91 +31,154 @@ type LoadedImage = {
   name: string;
 };
 
-export function PanelSliceApp() {
-  const [mode, setMode] = useState<AppMode>("upload");
-  const [image, setImage] = useState<LoadedImage | null>(null);
-  const [editor, setEditor] = useState<EditorState>(createEmptyEditorState());
-  const [history, setHistory] = useState<EditorState[]>([]);
-  const [activeTool, setActiveTool] = useState<Tool>("horizontal");
-  const [outputs, setOutputs] = useState<OutputRegion[]>([]);
-  const [selectedOutputIds, setSelectedOutputIds] = useState<Set<string>>(
-    new Set(),
-  );
-  const [aspectPreset, setAspectPreset] = useState<AspectRatioPreset | null>(
-    null,
-  );
-  const [textOverlays, setTextOverlays] = useState<TextOverlayMap>({});
-  const [error, setError] = useState<string | null>(null);
-  const imageUrlRef = useRef<string | null>(null);
+/** All editing state for a single uploaded image. */
+type Project = {
+  id: string;
+  image: LoadedImage;
+  editor: EditorState;
+  history: EditorState[];
+  activeTool: Tool;
+  outputs: OutputRegion[];
+  selectedOutputIds: Set<string>;
+  aspectPreset: AspectRatioPreset | null;
+  textOverlays: TextOverlayMap;
+};
 
-  const pushHistory = useCallback((snapshot: EditorState) => {
-    setHistory((prev) => [...prev.slice(-MAX_UNDO + 1), snapshot]);
-  }, []);
-
-  const updateEditor = useCallback(
-    (updater: (current: EditorState) => EditorState, recordHistory = true) => {
-      setEditor((current) => {
-        if (recordHistory) {
-          pushHistory(current);
-        }
-        return updater(current);
-      });
-    },
-    [pushHistory],
-  );
-
-  const handleUpload = useCallback((file: File) => {
-    setError(null);
+function loadProject(file: File): Promise<Project | null> {
+  return new Promise((resolve) => {
     if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
+      resolve(null);
       return;
     }
-
-    if (imageUrlRef.current) {
-      URL.revokeObjectURL(imageUrlRef.current);
-    }
-
     const url = URL.createObjectURL(file);
-    imageUrlRef.current = url;
-
     const probe = new Image();
     probe.onload = () => {
-      setImage({
-        url,
-        width: probe.naturalWidth,
-        height: probe.naturalHeight,
-        name: file.name,
+      resolve({
+        id: createId("img"),
+        image: {
+          url,
+          width: probe.naturalWidth,
+          height: probe.naturalHeight,
+          name: file.name,
+        },
+        editor: createEmptyEditorState(),
+        history: [],
+        activeTool: "horizontal",
+        outputs: [],
+        selectedOutputIds: new Set(),
+        aspectPreset: null,
+        textOverlays: {},
       });
-      setEditor(createEmptyEditorState());
-      setHistory([]);
-      setOutputs([]);
-      setSelectedOutputIds(new Set());
-      setTextOverlays({});
-      setActiveTool("horizontal");
-      setMode("editing");
     };
     probe.onerror = () => {
       URL.revokeObjectURL(url);
-      imageUrlRef.current = null;
-      setError("That image could not be loaded. Try another file.");
+      resolve(null);
     };
     probe.src = url;
+  });
+}
+
+export function PanelSliceApp() {
+  const [mode, setMode] = useState<AppMode>("upload");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Keep a live reference to projects so the unmount cleanup can revoke URLs.
+  const projectsRef = useRef<Project[]>([]);
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  useEffect(() => {
+    return () => {
+      projectsRef.current.forEach((project) =>
+        URL.revokeObjectURL(project.image.url),
+      );
+    };
   }, []);
+
+  const activeProject = useMemo(
+    () => projects.find((project) => project.id === activeId) ?? null,
+    [projects, activeId],
+  );
+
+  const updateActiveProject = useCallback(
+    (updater: (project: Project) => Project) => {
+      setProjects((prev) =>
+        prev.map((project) =>
+          project.id === activeId ? updater(project) : project,
+        ),
+      );
+    },
+    [activeId],
+  );
+
+  const updateEditor = useCallback(
+    (updater: (current: EditorState) => EditorState, recordHistory = true) => {
+      updateActiveProject((project) => ({
+        ...project,
+        history: recordHistory
+          ? [...project.history.slice(-MAX_UNDO + 1), project.editor]
+          : project.history,
+        editor: updater(project.editor),
+      }));
+    },
+    [updateActiveProject],
+  );
+
+  const handleUpload = useCallback(async (files: File[]) => {
+    setError(null);
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length === 0) {
+      setError("Please choose image files.");
+      return;
+    }
+
+    const loaded = (await Promise.all(imageFiles.map(loadProject))).filter(
+      (project): project is Project => project !== null,
+    );
+
+    if (loaded.length === 0) {
+      setError("Those images could not be loaded. Try other files.");
+      return;
+    }
+
+    setProjects((prev) => [...prev, ...loaded]);
+    setActiveId((prev) => prev ?? loaded[0].id);
+    setMode("editing");
+
+    const failed = imageFiles.length - loaded.length;
+    if (failed > 0) {
+      setError(
+        `${failed} image${failed === 1 ? "" : "s"} could not be loaded and ${
+          failed === 1 ? "was" : "were"
+        } skipped.`,
+      );
+    }
+  }, []);
+
+  const setActiveTool = useCallback(
+    (tool: Tool) => {
+      updateActiveProject((project) => ({ ...project, activeTool: tool }));
+    },
+    [updateActiveProject],
+  );
 
   const handleReset = useCallback(() => {
     updateEditor(() => createEmptyEditorState());
     setActiveTool("horizontal");
-  }, [updateEditor]);
+  }, [updateEditor, setActiveTool]);
 
   const handleUndo = useCallback(() => {
-    setHistory((prev) => {
-      if (prev.length === 0) return prev;
-      const next = [...prev];
-      const previous = next.pop();
-      if (previous) setEditor(previous);
-      return next;
+    updateActiveProject((project) => {
+      if (project.history.length === 0) return project;
+      const history = [...project.history];
+      const previous = history.pop();
+      if (!previous) return project;
+      return { ...project, history, editor: previous };
     });
-  }, []);
+  }, [updateActiveProject]);
 
   const addHorizontalLine = useCallback(
     (position: number) => {
@@ -200,118 +264,142 @@ export function PanelSliceApp() {
   );
 
   const deleteSelected = useCallback(() => {
-    if (!editor.selectedId) return;
-    const id = editor.selectedId;
+    if (!activeProject?.editor.selectedId) return;
+    const id = activeProject.editor.selectedId;
     updateEditor((current) => ({
       horizontalLines: current.horizontalLines.filter((line) => line.id !== id),
       verticalLines: current.verticalLines.filter((line) => line.id !== id),
       cropBoxes: current.cropBoxes.filter((box) => box.id !== id),
       selectedId: null,
     }));
-  }, [editor.selectedId, updateEditor]);
+  }, [activeProject, updateEditor]);
 
   const goToPreview = useCallback(() => {
-    if (!image) return;
-    const generated = generateRegions(editor, image.width, image.height);
-    setOutputs(generated);
-    setSelectedOutputIds(new Set(generated.map((region) => region.id)));
+    if (!activeProject) return;
+    updateActiveProject((project) => {
+      const generated = generateRegions(
+        project.editor,
+        project.image.width,
+        project.image.height,
+      );
+      return {
+        ...project,
+        outputs: generated,
+        selectedOutputIds: new Set(generated.map((region) => region.id)),
+      };
+    });
     setMode("preview");
-  }, [editor, image]);
+  }, [activeProject, updateActiveProject]);
 
   const goToExport = useCallback(() => {
     setMode("export");
   }, []);
 
+  const selectProject = useCallback((id: string) => {
+    setActiveId(id);
+    setMode("editing");
+  }, []);
+
+  const removeProject = useCallback(
+    (id: string) => {
+      const target = projects.find((project) => project.id === id);
+      if (target) URL.revokeObjectURL(target.image.url);
+      const next = projects.filter((project) => project.id !== id);
+      setProjects(next);
+      if (activeId === id) {
+        setActiveId(next[0]?.id ?? null);
+      }
+      if (next.length === 0) {
+        setMode("upload");
+      } else {
+        setMode("editing");
+      }
+    },
+    [projects, activeId],
+  );
+
   const startOver = useCallback(() => {
-    if (imageUrlRef.current) {
-      URL.revokeObjectURL(imageUrlRef.current);
-      imageUrlRef.current = null;
-    }
-    setImage(null);
-    setEditor(createEmptyEditorState());
-    setHistory([]);
-    setOutputs([]);
-    setSelectedOutputIds(new Set());
-    setAspectPreset(null);
-    setTextOverlays({});
+    projects.forEach((project) => URL.revokeObjectURL(project.image.url));
+    setProjects([]);
+    setActiveId(null);
     setMode("upload");
     setError(null);
-  }, []);
+  }, [projects]);
+
+  const setAspectPreset = useCallback(
+    (preset: AspectRatioPreset | null) => {
+      updateActiveProject((project) => ({ ...project, aspectPreset: preset }));
+    },
+    [updateActiveProject],
+  );
 
   const handleTextOverlayChange = useCallback(
     (regionId: string, overlay: TextOverlay | undefined) => {
-      setTextOverlays((current) => {
-        const next = { ...current };
+      updateActiveProject((project) => {
+        const next = { ...project.textOverlays };
         if (!overlay || !overlay.text.trim()) {
           delete next[regionId];
         } else {
           next[regionId] = overlay;
         }
-        return next;
+        return { ...project, textOverlays: next };
       });
     },
-    [],
+    [updateActiveProject],
   );
 
-  const selectedOutputs = useMemo(
-    () => outputs.filter((region) => selectedOutputIds.has(region.id)),
-    [outputs, selectedOutputIds],
+  const toggleOutput = useCallback(
+    (id: string) => {
+      updateActiveProject((project) => {
+        const next = new Set(project.selectedOutputIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return { ...project, selectedOutputIds: next };
+      });
+    },
+    [updateActiveProject],
   );
+
+  const selectAllOutputs = useCallback(() => {
+    updateActiveProject((project) => ({
+      ...project,
+      selectedOutputIds: new Set(project.outputs.map((region) => region.id)),
+    }));
+  }, [updateActiveProject]);
+
+  const clearOutputSelection = useCallback(() => {
+    updateActiveProject((project) => ({
+      ...project,
+      selectedOutputIds: new Set(),
+    }));
+  }, [updateActiveProject]);
+
+  const selectedOutputs = useMemo(() => {
+    if (!activeProject) return [];
+    return activeProject.outputs.filter((region) =>
+      activeProject.selectedOutputIds.has(region.id),
+    );
+  }, [activeProject]);
 
   const pieceCount = useMemo(() => {
-    if (!image) return 0;
-    return generateRegions(editor, image.width, image.height).length;
-  }, [editor, image]);
-
-  useEffect(() => {
-    // Auto-load test image for demonstration
-    const autoLoadImage = async () => {
-      try {
-        const response = await fetch('/test-image.png');
-        const blob = await response.blob();
-        const file = new File([blob], 'test-image.png', { type: 'image/png' });
-        
-        // Inline upload logic to avoid dependency issues
-        const url = URL.createObjectURL(file);
-        const probe = new Image();
-        probe.onload = () => {
-          setImage({
-            url,
-            width: probe.naturalWidth,
-            height: probe.naturalHeight,
-            name: file.name,
-          });
-          setMode("editing");
-        };
-        probe.onerror = () => {
-          URL.revokeObjectURL(url);
-          console.error('Failed to load test image');
-        };
-        probe.src = url;
-      } catch (error) {
-        console.error('Auto-load failed:', error);
-      }
-    };
-    autoLoadImage();
-
-    return () => {
-      if (imageUrlRef.current) {
-        URL.revokeObjectURL(imageUrlRef.current);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!activeProject) return 0;
+    return generateRegions(
+      activeProject.editor,
+      activeProject.image.width,
+      activeProject.image.height,
+    ).length;
+  }, [activeProject]);
 
   return (
     <div className="app-shell">
       <header className="app-header">
         <div>
           <p className="app-kicker">Panel Slice Ultra</p>
-          <h1 className="app-title">Split one image into clean outputs</h1>
+          <h1 className="app-title">Split your images into clean outputs</h1>
         </div>
         {mode !== "upload" && (
           <button type="button" className="ghost-button" onClick={startOver}>
-            New image
+            Start over
           </button>
         )}
       </header>
@@ -325,18 +413,32 @@ export function PanelSliceApp() {
         </div>
       )}
 
+      {mode !== "upload" && projects.length > 0 && activeProject && (
+        <ImageSwitcher
+          projects={projects.map((project) => ({
+            id: project.id,
+            url: project.image.url,
+            name: project.image.name,
+          }))}
+          activeId={activeProject.id}
+          onSelect={selectProject}
+          onRemove={removeProject}
+          onAddImages={handleUpload}
+        />
+      )}
+
       <main className="app-main">
         {mode === "upload" && (
           <UploadScreen onUpload={handleUpload} error={error} />
         )}
 
-        {mode === "editing" && image && (
+        {mode === "editing" && activeProject && (
           <EditingScreen
-            image={image}
-            editor={editor}
-            activeTool={activeTool}
+            image={activeProject.image}
+            editor={activeProject.editor}
+            activeTool={activeProject.activeTool}
             pieceCount={pieceCount}
-            canUndo={history.length > 0}
+            canUndo={activeProject.history.length > 0}
             onToolChange={setActiveTool}
             onAddHorizontal={addHorizontalLine}
             onAddVertical={addVerticalLine}
@@ -351,39 +453,30 @@ export function PanelSliceApp() {
           />
         )}
 
-        {mode === "preview" && image && (
+        {mode === "preview" && activeProject && (
           <PreviewScreen
-            imageUrl={image.url}
-            outputs={outputs}
-            selectedIds={selectedOutputIds}
-            aspectPreset={aspectPreset}
-            textOverlays={textOverlays}
+            imageUrl={activeProject.image.url}
+            outputs={activeProject.outputs}
+            selectedIds={activeProject.selectedOutputIds}
+            aspectPreset={activeProject.aspectPreset}
+            textOverlays={activeProject.textOverlays}
             onTextOverlayChange={handleTextOverlayChange}
-            onToggle={(id) => {
-              setSelectedOutputIds((current) => {
-                const next = new Set(current);
-                if (next.has(id)) next.delete(id);
-                else next.add(id);
-                return next;
-              });
-            }}
-            onSelectAll={() =>
-              setSelectedOutputIds(new Set(outputs.map((region) => region.id)))
-            }
-            onClearSelection={() => setSelectedOutputIds(new Set())}
+            onToggle={toggleOutput}
+            onSelectAll={selectAllOutputs}
+            onClearSelection={clearOutputSelection}
             onBack={() => setMode("editing")}
             onContinue={goToExport}
           />
         )}
 
-        {mode === "export" && image && (
+        {mode === "export" && activeProject && (
           <ExportScreen
-            key="export"
-            imageUrl={image.url}
-            sourceImageName={image.name}
+            key={activeProject.id}
+            imageUrl={activeProject.image.url}
+            sourceImageName={activeProject.image.name}
             outputs={selectedOutputs}
-            aspectPreset={aspectPreset}
-            textOverlays={textOverlays}
+            aspectPreset={activeProject.aspectPreset}
+            textOverlays={activeProject.textOverlays}
             onAspectChange={setAspectPreset}
             onBack={() => setMode("preview")}
           />
