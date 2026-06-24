@@ -464,6 +464,44 @@ button:disabled {
   line-height: 1.5;
 }
 
+.export-field {
+  margin-bottom: 16px;
+}
+
+.export-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.export-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font: inherit;
+}
+
+.export-input:focus {
+  outline: 2px solid rgba(91, 140, 255, 0.45);
+  outline-offset: 1px;
+}
+
+.export-hint {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.export-hint code {
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
 .aspect-grid {
   display: flex;
   flex-wrap: wrap;

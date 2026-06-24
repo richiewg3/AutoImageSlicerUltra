@@ -356,7 +356,9 @@ export function PanelSliceApp() {
 
         {mode === "export" && image && (
           <ExportScreen
+            key={image.name}
             imageUrl={image.url}
+            sourceImageName={image.name}
             outputs={selectedOutputs}
             aspectPreset={aspectPreset}
             onAspectChange={setAspectPreset}
