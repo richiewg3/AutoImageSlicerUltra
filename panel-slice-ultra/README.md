@@ -8,7 +8,7 @@ Mobile-first Progressive Web App for splitting one larger image into multiple se
 - Place horizontal and vertical slice lines
 - Draw custom crop boxes for irregular regions
 - Select, move, delete, undo, and reset your layout
-- Preview generated outputs and choose which to keep
+- Preview generated outputs, play them back as an animation, and choose which to keep
 - Export selected outputs individually or as a ZIP
 - Optional export aspect-ratio presets (1:1, 2:3, 3:2, 4:3, 3:4, 9:16, 16:9)
 - Installable PWA suitable for Vercel deployment
