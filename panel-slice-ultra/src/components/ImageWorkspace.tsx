@@ -20,8 +20,18 @@ type ImageWorkspaceProps = {
 
 type DragState =
   | { kind: "crop-draw"; startX: number; startY: number; boxId: string }
-  | { kind: "line-move"; lineId: string; orientation: "horizontal" | "vertical" }
-  | { kind: "box-move"; boxId: string; startX: number; startY: number; origin: CropBox };
+  | {
+      kind: "line-move";
+      lineId: string;
+      orientation: "horizontal" | "vertical";
+    }
+  | {
+      kind: "box-move";
+      boxId: string;
+      startX: number;
+      startY: number;
+      origin: CropBox;
+    };
 
 export function ImageWorkspace({
   imageUrl,
@@ -85,7 +95,11 @@ export function ImageWorkspace({
     onSelect(hit.id);
 
     if (hit.kind === "line") {
-      onMoveLine(hit.id, hit.orientation === "horizontal" ? point.y : point.x, true);
+      onMoveLine(
+        hit.id,
+        hit.orientation === "horizontal" ? point.y : point.x,
+        true,
+      );
       setDrag({
         kind: "line-move",
         lineId: hit.id,
@@ -151,8 +165,12 @@ export function ImageWorkspace({
   };
 
   useEffect(() => {
-    setDraftBox(null);
-    setDrag(null);
+    const resetId = window.setTimeout(() => {
+      setDraftBox(null);
+      setDrag(null);
+    }, 0);
+
+    return () => window.clearTimeout(resetId);
   }, [activeTool]);
 
   const allBoxes = draftBox
@@ -170,7 +188,11 @@ export function ImageWorkspace({
         onPointerCancel={handlePointerUp}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl} alt="Source image for slicing" className="workspace-image" />
+        <img
+          src={imageUrl}
+          alt="Source image for slicing"
+          className="workspace-image"
+        />
 
         {editor.horizontalLines.map((line) => (
           <div
@@ -212,7 +234,11 @@ function hitTest(
   editor: EditorState,
   x: number,
   y: number,
-): { id: string; kind: "line" | "box"; orientation?: "horizontal" | "vertical" } | null {
+): {
+  id: string;
+  kind: "line" | "box";
+  orientation?: "horizontal" | "vertical";
+} | null {
   const threshold = 0.03;
 
   for (const box of editor.cropBoxes) {

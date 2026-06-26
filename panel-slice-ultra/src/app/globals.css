@@ -506,6 +506,77 @@ button:disabled {
   gap: 10px;
 }
 
+.animation-preview {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(91, 140, 255, 0.28);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    rgba(91, 140, 255, 0.12),
+    rgba(24, 27, 34, 0.92)
+  );
+}
+
+.animation-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.animation-copy h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+}
+
+.animation-copy p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.animation-stage {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #0b0f18;
+  overflow: hidden;
+}
+
+.animation-stage img {
+  display: block;
+  max-width: 100%;
+  max-height: min(52vh, 460px);
+  object-fit: contain;
+}
+
+.animation-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.animation-speed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.animation-speed input {
+  accent-color: var(--accent);
+}
+
+.animation-frame-label {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 .preview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
