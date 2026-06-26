@@ -33,6 +33,20 @@ def test_slice_single_image():
     assert "Found 6 panels." in html
 
 
+def test_slice_image_adds_panel_animation_player():
+    client = app.test_client()
+    data = {"image": (io.BytesIO(_png_bytes(make_grid_image(rows=1, cols=3))), "strip.png")}
+    response = client.post("/slice", data=data, content_type="multipart/form-data")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Panel animation preview" in html
+    assert "data-panel-player" in html
+    assert "data-play-toggle" in html
+    assert "Frame 1 / 3" in html
+    assert "data:image/png;base64," in html
+
+
 def test_slice_multiple_images():
     client = app.test_client()
     data = {

@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import html
 import io
+import json
 
 from flask import Flask, request
 from PIL import Image
@@ -43,6 +44,14 @@ _PAGE = """<!doctype html>
              gap: 16px; margin-top: 12px; }}
     .card {{ background: #181b22; border-radius: 10px; padding: 10px; text-align: center; }}
     .card img {{ max-width: 100%; border-radius: 6px; }}
+    .player {{ background: #181b22; border-radius: 12px; margin-top: 12px; padding: 16px; }}
+    .player h3 {{ margin: 0 0 10px; font-size: 16px; }}
+    .player img {{ display: block; max-height: 420px; max-width: 100%; margin: 0 auto 12px;
+                   border-radius: 8px; background: #0f1116; }}
+    .controls {{ display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }}
+    .controls button {{ padding: 8px 12px; }}
+    .controls input[type=range] {{ accent-color: #60a5fa; }}
+    .frame-label {{ color: #cbd5e1; min-width: 90px; }}
     .count {{ margin-top: 20px; font-size: 18px; }}
     .image-section {{ margin-top: 28px; }}
     .image-section h2 {{ margin: 0 0 4px; font-size: 18px; font-weight: 600; }}
@@ -62,15 +71,71 @@ _PAGE = """<!doctype html>
     </form>
     {body}
   </main>
+  <script>
+    const players = document.querySelectorAll('[data-panel-player]');
+    players.forEach((player) => {{
+      const frames = JSON.parse(player.dataset.frames || '[]');
+      if (frames.length === 0) return;
+      const image = player.querySelector('[data-frame-image]');
+      const toggle = player.querySelector('[data-play-toggle]');
+      const restart = player.querySelector('[data-restart]');
+      const speed = player.querySelector('[data-speed]');
+      const label = player.querySelector('[data-frame-label]');
+      let index = 0;
+      let timer = null;
+
+      const render = () => {{
+        image.src = frames[index];
+        image.alt = `Animated panel frame ${{index + 1}} of ${{frames.length}}`;
+        label.textContent = `Frame ${{index + 1}} / ${{frames.length}}`;
+      }};
+
+      const stop = () => {{
+        window.clearInterval(timer);
+        timer = null;
+        toggle.textContent = 'Play';
+      }};
+
+      const play = () => {{
+        stop();
+        toggle.textContent = 'Pause';
+        timer = window.setInterval(() => {{
+          index = (index + 1) % frames.length;
+          render();
+        }}, Number(speed.value));
+      }};
+
+      toggle.addEventListener('click', () => {{
+        if (timer) {{
+          stop();
+        }} else {{
+          play();
+        }}
+      }});
+      restart.addEventListener('click', () => {{
+        index = 0;
+        render();
+        if (timer) play();
+      }});
+      speed.addEventListener('change', () => {{
+        if (timer) play();
+      }});
+      render();
+    }});
+  </script>
 </body>
 </html>"""
 
 
-def _img_tag(image: Image.Image) -> str:
+def _image_data_uri(image: Image.Image) -> str:
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     data = base64.b64encode(buf.getvalue()).decode("ascii")
-    return f'<img src="data:image/png;base64,{data}" alt="panel" />'
+    return f"data:image/png;base64,{data}"
+
+
+def _img_tag(image: Image.Image) -> str:
+    return f'<img src="{_image_data_uri(image)}" alt="panel" />'
 
 
 def _render_panels(panels: list) -> str:
@@ -80,6 +145,28 @@ def _render_panels(panels: list) -> str:
         for p in panels
     )
     return f'<div class="grid">{cards}</div>'
+
+
+def _render_player(panels: list) -> str:
+    if len(panels) < 2:
+        return ""
+
+    frames = [_image_data_uri(panel.image) for panel in panels]
+    frames_json = html.escape(json.dumps(frames), quote=True)
+    return (
+        f'<div class="player" data-panel-player data-frames="{frames_json}">'
+        f"<h3>Panel animation preview</h3>"
+        f'<img data-frame-image src="{frames[0]}" alt="Animated panel frame 1 of {len(frames)}" />'
+        f'<div class="controls">'
+        f'<button type="button" data-play-toggle>Play</button>'
+        f'<button type="button" data-restart>Restart</button>'
+        f'<label>Speed '
+        f'<input type="range" data-speed min="200" max="2000" step="100" value="700" />'
+        f"</label>"
+        f'<span class="frame-label" data-frame-label>Frame 1 / {len(frames)}</span>'
+        f"</div>"
+        f"</div>"
+    )
 
 
 def _render_image_section(filename: str, panels: list, error: str | None = None) -> str:
@@ -97,6 +184,7 @@ def _render_image_section(filename: str, panels: list, error: str | None = None)
         f'<section class="image-section">'
         f"<h2>{safe_name}</h2>"
         f'<p class="image-count">Found {count} {label}.</p>'
+        f"{_render_player(panels)}"
         f"{_render_panels(panels)}"
         f"</section>"
     )
