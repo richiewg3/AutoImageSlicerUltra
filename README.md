@@ -38,6 +38,11 @@ Web UI (development server on http://127.0.0.1:5000):
 .venv/bin/autoslice-web
 ```
 
+After uploading an image in the web UI, each multi-panel result includes an animation
+preview that plays the sliced panels back-to-back. Use the Play/Pause and Restart
+controls to review the panels in sequence, and adjust the speed slider to change the
+frame delay.
+
 ## Lint & test
 ```bash
 .venv/bin/ruff check .
